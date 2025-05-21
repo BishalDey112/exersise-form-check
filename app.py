@@ -149,6 +149,79 @@ def register():
         db.session.commit()
         return redirect(url_for('login'))
     return render_template('register.html')
+@app.route('/calories_chart')
+def calories_chart():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    logs = ExerciseLog.query.filter_by(user_id=session['user_id']).all()
+
+    if not logs:
+        return "No data available to plot.", 404
+
+    daily_calories = defaultdict(float)
+    for log in logs:
+        date_str = log.timestamp.date().isoformat()
+        calories = log.count * calories_per_rep.get(log.exercise_type, 0)
+        daily_calories[date_str] += calories
+
+    sorted_dates = sorted(daily_calories.keys())
+    calories_values = [daily_calories[date] for date in sorted_dates]
+
+    plt.figure(figsize=(10, 5))
+    plt.bar(sorted_dates, calories_values, color='orange')
+    plt.xticks(rotation=45)
+    plt.title('Calories Burned Per Day')
+    plt.xlabel('Date')
+    plt.ylabel('Calories')
+    plt.tight_layout()
+    plt.grid(axis='y')
+
+    img_bytes = io.BytesIO()
+    plt.savefig(img_bytes, format='png')
+    img_bytes.seek(0)
+    plt.close()
+    return send_file(img_bytes, mimetype='image/png')
+
+@app.route('/exercise_chart')
+def exercise_chart():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    logs = ExerciseLog.query.filter_by(user_id=session['user_id']).order_by(ExerciseLog.timestamp).all()
+    
+    if not logs:
+        return "No data available to plot.", 404
+
+    # Organize data
+    exercise_data = defaultdict(list)
+    for log in logs:
+        exercise_data[log.exercise_type].append((log.timestamp, log.count))
+
+    # Create plot
+    plt.figure(figsize=(10, 5))
+    for exercise_type, data in exercise_data.items():
+        timestamps, counts = zip(*data)
+        plt.plot(timestamps, counts, label=exercise_type)
+
+    plt.title('Exercise Count Over Time')
+    plt.xlabel('Time')
+    plt.ylabel('Count')
+    plt.legend()
+    plt.tight_layout()
+    plt.grid(True)
+
+    # Format x-axis with date formatting
+    plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d\n%H:%M'))
+    plt.gcf().autofmt_xdate()
+
+    # Save plot to BytesIO and send as response
+    img_bytes = io.BytesIO()
+    plt.savefig(img_bytes, format='png')
+    img_bytes.seek(0)
+    plt.close()
+    return send_file(img_bytes, mimetype='image/png')
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
